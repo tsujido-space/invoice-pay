@@ -2,19 +2,56 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# Gemini Pay - インテリジェント請求書管理ダッシュボード
 
-This contains everything you need to run your app locally.
+Gemini Payは、Gemini AIを活用して請求書（PDFや画像）から振込情報を自動抽出し、支払いを効率化するための管理ダッシュボードです。
 
-View your app in AI Studio: https://ai.studio/apps/drive/1UA-EB7WYu6DWUrgg4I0Jo3hK7752WJ8a
+## 🌟 主な機能
 
-## Run Locally
+- **AI請求書データ抽出**: Google Gemini (gemini-3-flash-preview) を使用して、ベンダー名、請求金額、振込先口座情報（銀行名、支店名、口座番号等）を自動で抽出します。
+- **支払ステータス管理**: 支払い待ち、支払い済みなどのステータスを一目で管理できます。
+- **Google Drive 連携（シミュレーション）**: Google Driveからの請求書同期を想定したインターフェースを備えています。
+- **インタラクティブなダッシュボード**: 月別の支出推移をグラフで視覚化します。
+- **振込情報コピー機能**: 抽出された振込情報をワンクリックでコピーでき、銀行振込の入力ミスを削減します。
 
-**Prerequisites:**  Node.js
+## 🛠 技術スタック
 
+- **Frontend**: React (19), Vite, TypeScript
+- **AI**: Google Generative AI (@google/genai)
+- **Icons**: Lucide React
+- **Charts**: Recharts
+- **Styling**: Vanilla CSS (TailwindCSS風のユーティリティライブラリを使用)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## 🚀 セットアップ
+
+### 前提条件
+
+- Node.js (v18以上推奨)
+- Google AI Studio の APIキー
+
+### インストール
+
+1. リポジトリをクローンします。
+2. 依存関係をインストールします：
+   ```bash
+   npm install
+   ```
+3. 環境変数を設定します。`.env.local` ファイルを作成し、APIキーを追加してください：
+   ```env
+   API_KEY=あなたのGEMINI_API_KEY
+   ```
+
+### 開発サーバーの起動
+
+```bash
+npm run dev
+```
+
+起動後、ブラウザで表示されるURLにアクセスしてください。
+
+## 📝 使い方
+
+1. 左側の「Add Invoice」ボタンから請求書のファイル（画像またはPDF）を選択します。
+2. AIが自動的にデータを解析し、一覧に追加されます。
+3. 一覧の「未振込」ボタンをクリックすると詳細な振込情報が表示されます。
+4. 振込が終わったら「振込完了にする」をクリックしてステータスを更新します。
