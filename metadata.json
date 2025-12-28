@@ -1,0 +1,5 @@
+{
+  "name": "Gemini Invoice Pay",
+  "description": "An intelligent invoice management dashboard that uses Gemini to extract payment details from uploaded documents and tracks payment status.",
+  "requestFramePermissions": []
+}
