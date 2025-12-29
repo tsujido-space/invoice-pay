@@ -72,7 +72,7 @@ resource "google_iap_web_cloud_run_service_iam_member" "member" {
 # Firestore Database
 resource "google_firestore_database" "database" {
   provider                          = google-beta
-  name                              = "(default)"
+  name                              = "invoice"
   location_id                       = var.region
   type                              = "FIRESTORE_NATIVE"
   deletion_policy                   = "DELETE"

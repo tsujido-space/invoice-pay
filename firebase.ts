@@ -11,10 +11,10 @@ import { getFirestore } from 'firebase/firestore';
 // but usually, it needs the full config.
 
 const firebaseConfig = {
-  // These will be replaced/filled by the user or env vars if needed.
-  // For Firestore REST API or simplified usage, projectId might suffice.
-  projectId: "tsujido2024", 
+    // These will be replaced/filled by the user or env vars if needed.
+    // For Firestore REST API or simplified usage, projectId might suffice.
+    projectId: "tsujido2024",
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+export const db = getFirestore(app, "invoice");
