@@ -20,3 +20,9 @@ variable "image_tag" {
   type        = string
   default     = "latest"
 }
+
+variable "allowed_domain" {
+  description = "Domain allowed to access the service via IAP"
+  type        = string
+  default     = "tsujido.co.jp"
+}

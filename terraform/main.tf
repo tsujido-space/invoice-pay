@@ -3,6 +3,11 @@ provider "google" {
   region  = var.region
 }
 
+provider "google-beta" {
+  project = var.project_id
+  region  = var.region
+}
+
 # Artifact Registry Repository
 resource "google_artifact_registry_repository" "repo" {
   location      = var.region
@@ -11,8 +16,9 @@ resource "google_artifact_registry_repository" "repo" {
   format        = "DOCKER"
 }
 
-# Cloud Run Service
+# Cloud Run Service (using google-beta for IAP)
 resource "google_cloud_run_v2_service" "default" {
+  provider = google-beta
   name     = var.service_name
   location = var.region
   ingress  = "INGRESS_TRAFFIC_ALL"
@@ -31,12 +37,27 @@ resource "google_cloud_run_v2_service" "default" {
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
     percent = 100
   }
+
+  # Enable Identity-Aware Proxy
+  iap_enabled = true
 }
 
-# Allow public access to the Cloud Run service
-resource "google_cloud_run_v2_service_iam_member" "public_access" {
+# Grant IAP Service Agent permission to invoke Cloud Run
+# The service agent email format is service-<PROJECT_NUMBER>@gcp-sa-iap.iam.gserviceaccount.com
+data "google_project" "project" {}
+
+resource "google_cloud_run_v2_service_iam_member" "iap_invoker" {
   location = google_cloud_run_v2_service.default.location
   name     = google_cloud_run_v2_service.default.name
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-iap.iam.gserviceaccount.com"
+}
+
+# Grant access to the allowed domain via IAP
+resource "google_iap_web_cloud_run_service_iam_member" "member" {
+  project = data.google_project.project.project_id
+  location = google_cloud_run_v2_service.default.location
+  service = google_cloud_run_v2_service.default.name
+  role    = "roles/iap.httpsResourceAccessor"
+  member  = "domain:${var.allowed_domain}"
 }
