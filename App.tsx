@@ -157,14 +157,20 @@ const App: React.FC = () => {
   };
 
   const handleAddFolder = async (name: string, folderId: string) => {
-    const newFolder: Omit<DriveFolder, 'id'> = {
-      name,
-      folderId,
-      enabled: true,
-      createdAt: new Date().toISOString()
-    };
-    const id = await firestoreService.saveDriveFolder(newFolder);
-    setDriveFolders(prev => [{ ...newFolder, id }, ...prev]);
+    try {
+      const newFolder: Omit<DriveFolder, 'id'> = {
+        name,
+        folderId,
+        enabled: true,
+        createdAt: new Date().toISOString()
+      };
+      const id = await firestoreService.saveDriveFolder(newFolder);
+      setDriveFolders(prev => [{ ...newFolder, id }, ...prev]);
+    } catch (err) {
+      console.error("Failed to save folder:", err);
+      alert("フォルダの保存に失敗しました。");
+      throw err;
+    }
   };
 
   const handleDeleteFolder = async (id: string) => {

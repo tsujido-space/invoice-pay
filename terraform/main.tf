@@ -8,11 +8,6 @@ provider "google-beta" {
   region  = var.region
 }
 
-# Enable APIs
-resource "google_project_service" "firestore" {
-  service = "firestore.googleapis.com"
-  disable_on_destroy = false
-}
 
 # Artifact Registry Repository
 resource "google_artifact_registry_repository" "repo" {
@@ -97,9 +92,8 @@ resource "google_firebaserules_ruleset" "firestore" {
     }
   }
 }
-
 resource "google_firebaserules_release" "firestore" {
-  name         = "cloud.firestore"
+  name         = "cloud.firestore/invoice"
   ruleset_name = google_firebaserules_ruleset.firestore.name
   project      = var.project_id
 }

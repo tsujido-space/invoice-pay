@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Folder, Plus, Trash2, ExternalLink, AlertCircle } from 'lucide-react';
+import { Folder, Plus, Trash2, ExternalLink, AlertCircle, Clock } from 'lucide-react';
 import { DriveFolder } from '../types';
 
 interface FolderSettingsProps {
@@ -19,14 +19,21 @@ const FolderSettings: React.FC<FolderSettingsProps> = ({
     const [newName, setNewName] = useState('');
     const [newFolderId, setNewFolderId] = useState('');
     const [isAdding, setIsAdding] = useState(false);
+    const [isSaving, setIsSaving] = useState(false); // New state for loading
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => { // Made async
         e.preventDefault();
         if (newName && newFolderId) {
-            onAddFolder(newName, newFolderId);
-            setNewName('');
-            setNewFolderId('');
-            setIsAdding(false);
+            setIsSaving(true); // Set saving state to true
+            try {
+                // Assuming onAddFolder might be an async operation or we want to simulate waiting
+                await onAddFolder(newName, newFolderId);
+                setNewName('');
+                setNewFolderId('');
+                setIsAdding(false);
+            } finally {
+                setIsSaving(false); // Reset saving state regardless of success or failure
+            }
         }
     };
 
@@ -83,9 +90,11 @@ const FolderSettings: React.FC<FolderSettingsProps> = ({
                             </button>
                             <button
                                 type="submit"
-                                className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition"
+                                disabled={isSaving}
+                                className={`px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition flex items-center space-x-2 ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
                             >
-                                保存する
+                                {isSaving && <Clock className="animate-spin" size={18} />}
+                                <span>{isSaving ? '保存中...' : '保存する'}</span>
                             </button>
                         </div>
                     </form>
