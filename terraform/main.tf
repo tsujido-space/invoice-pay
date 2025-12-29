@@ -23,6 +23,7 @@ resource "google_cloud_run_v2_service" "default" {
   location = var.region
   ingress  = "INGRESS_TRAFFIC_ALL"
   deletion_protection = false
+  launch_stage = "BETA"
 
   template {
     containers {
@@ -57,7 +58,7 @@ resource "google_cloud_run_v2_service_iam_member" "iap_invoker" {
 resource "google_iap_web_cloud_run_service_iam_member" "member" {
   project = data.google_project.project.project_id
   location = google_cloud_run_v2_service.default.location
-  service = google_cloud_run_v2_service.default.name
+  cloud_run_service_name = google_cloud_run_v2_service.default.name
   role    = "roles/iap.httpsResourceAccessor"
   member  = "domain:${var.allowed_domain}"
 }
