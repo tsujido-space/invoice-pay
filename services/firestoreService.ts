@@ -6,6 +6,7 @@ import {
     updateDoc,
     doc,
     query,
+    where,
     orderBy,
     Timestamp,
     deleteDoc
@@ -39,6 +40,12 @@ export const updateInvoiceStatus = async (id: string, status: string, paymentDat
         status,
         paymentDate: paymentDate || null
     });
+};
+
+export const isDriveFileProcessed = async (driveFileId: string): Promise<boolean> => {
+    const q = query(collection(db, COLLECTION_NAME), where('driveFileId', '==', driveFileId));
+    const querySnapshot = await getDocs(q);
+    return !querySnapshot.empty;
 };
 
 // Drive Folder Settings

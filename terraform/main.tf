@@ -17,6 +17,16 @@ resource "google_artifact_registry_repository" "repo" {
   format        = "DOCKER"
 }
 
+# Enable APIs
+resource "google_project_service" "services" {
+  for_each = toset([
+    "firestore.googleapis.com",
+    "drive.googleapis.com",
+  ])
+  service            = each.key
+  disable_on_destroy = false
+}
+
 # Cloud Run Service (using google-beta for IAP)
 resource "google_cloud_run_v2_service" "default" {
   provider = google-beta
@@ -71,7 +81,7 @@ resource "google_firestore_database" "database" {
   location_id                       = var.region
   type                              = "FIRESTORE_NATIVE"
   deletion_policy                   = "DELETE"
-  depends_on                        = [google_project_service.firestore]
+  depends_on                        = [google_project_service.services]
 }
 
 # Grant Firestore User role to the default compute service account

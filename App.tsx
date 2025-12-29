@@ -21,6 +21,7 @@ import {
 import { Invoice, PaymentStatus, BankAccountInfo, DriveFolder } from './types';
 import { extractInvoiceData } from './services/geminiService';
 import * as firestoreService from './services/firestoreService';
+import * as driveService from './services/driveService';
 import Dashboard from './components/Dashboard';
 import FolderSettings from './components/FolderSettings';
 
@@ -32,6 +33,7 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isDriveSimulating, setIsDriveSimulating] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [syncProgress, setSyncProgress] = useState<{ current: number, total: number } | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -95,36 +97,40 @@ const App: React.FC = () => {
     }
   };
 
-  const simulateDriveSync = () => {
+  const syncDrive = async () => {
     setIsDriveSimulating(true);
-    setTimeout(() => {
-      const newInvoice: Invoice = {
-        id: Math.random().toString(36).substr(2, 9),
-        vendorName: 'Google Workspace',
-        invoiceNumber: 'GWS-88221',
-        amount: 1200,
-        currency: 'JPY',
-        dueDate: '2024-07-01',
-        issueDate: '2024-06-01',
-        status: PaymentStatus.PENDING,
-        category: 'Software',
-        extractedAt: new Date().toISOString(),
-        fileName: 'google_workspace_june.pdf',
-        bankAccount: {
-          bankName: '三井住友銀行',
-          branchName: '本店営業部',
-          accountType: '普通',
-          accountNumber: '9988776',
-          accountName: 'グーグル・クラウド・ジャパン（ド'
-        }
-      };
+    setSyncProgress(null);
 
-      firestoreService.saveInvoice(newInvoice).then(docId => {
-        setInvoices(prev => [{ ...newInvoice, id: docId }, ...prev]);
-        setIsDriveSimulating(false);
-        setActiveTab('list');
+    try {
+      const response = await fetch('/api/sync', {
+        method: 'POST',
       });
-    }, 2000);
+
+      if (!response.ok) {
+        throw new Error(`Sync failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Reload invoices to show new ones
+        const invoiceData = await firestoreService.getInvoices();
+        setInvoices(invoiceData);
+
+        if (data.processedCount > 0) {
+          alert(`${data.processedCount} 件の新しい請求書を取り込みました。`);
+        } else {
+          alert("新しい請求書は見つかりませんでした。");
+        }
+      } else {
+        throw new Error(data.error || 'Unknown error');
+      }
+    } catch (err) {
+      console.error("Sync Drive failed:", err);
+      alert("Google Drive との同期に失敗しました。詳細はコンソールを確認してください。");
+    } finally {
+      setIsDriveSimulating(false);
+    }
   };
 
   const toggleStatus = (id: string) => {
@@ -249,12 +255,21 @@ const App: React.FC = () => {
               />
             </div>
             <button
-              onClick={simulateDriveSync}
+              onClick={syncDrive}
               disabled={isDriveSimulating}
-              className="flex items-center space-x-2 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-medium text-slate-600"
+              className="flex items-center space-x-2 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-medium text-slate-600 disabled:opacity-50"
             >
-              {isDriveSimulating ? <Clock className="animate-spin text-blue-600" size={18} /> : <CloudDownload size={18} className="text-blue-600" />}
-              <span>Sync Drive</span>
+              {isDriveSimulating ? (
+                <>
+                  <Clock className="animate-spin text-blue-600" size={18} />
+                  <span>{syncProgress ? `Syncing (${syncProgress.current}/${syncProgress.total})` : 'Syncing...'}</span>
+                </>
+              ) : (
+                <>
+                  <CloudDownload size={18} className="text-blue-600" />
+                  <span>Sync Drive</span>
+                </>
+              )}
             </button>
           </div>
         </header>

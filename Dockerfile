@@ -1,3 +1,4 @@
+
 # Build stage
 FROM node:18-alpine AS build
 
@@ -10,12 +11,27 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM nginx:stable-alpine
+FROM node:18-alpine
 
-COPY --from=build /app/dist /usr/share/nginx/html
-# Nginx config to handle SPA routing if needed
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+WORKDIR /app
 
-EXPOSE 80
+COPY package*.json ./
+# Install only production dependencies
+RUN npm install --production
 
-CMD ["nginx", "-g", "daemon off;"]
+# Copy build artifacts and server file
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/server.ts ./server.ts
+COPY --from=build /app/services ./services
+COPY --from=build /app/firebase.ts ./firebase.ts
+COPY --from=build /app/types.ts ./types.ts
+
+# Install ts-node to run the server file directly in production (simplest for now)
+RUN npm install -g ts-node typescript
+
+EXPOSE 8080
+
+ENV PORT=8080
+
+# In Cloud Run, the service account credentials are automatically provided
+CMD ["ts-node", "--esm", "--skipProject", "server.ts"]

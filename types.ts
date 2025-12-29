@@ -29,6 +29,7 @@ export interface Invoice {
   fileName: string;
   bankAccount?: BankAccountInfo;
   paymentDate?: string;
+  driveFileId?: string;
 }
 
 export interface InvoiceExtractionResult {
