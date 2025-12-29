@@ -42,3 +42,11 @@ export interface InvoiceExtractionResult {
   notes?: string;
   bankAccount?: BankAccountInfo;
 }
+
+export interface DriveFolder {
+  id: string;
+  name: string;
+  folderId: string;
+  createdAt: string;
+  enabled: boolean;
+}

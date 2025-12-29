@@ -15,31 +15,38 @@ import {
   CloudDownload,
   Building2,
   Copy,
-  Check
+  Check,
+  Settings
 } from 'lucide-react';
-import { Invoice, PaymentStatus, BankAccountInfo } from './types';
+import { Invoice, PaymentStatus, BankAccountInfo, DriveFolder } from './types';
 import { extractInvoiceData } from './services/geminiService';
 import * as firestoreService from './services/firestoreService';
 import Dashboard from './components/Dashboard';
+import FolderSettings from './components/FolderSettings';
 
 const App: React.FC = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'list'>('dashboard');
+  const [driveFolders, setDriveFolders] = useState<DriveFolder[]>([]);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'settings'>('dashboard');
   const [isUploading, setIsUploading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDriveSimulating, setIsDriveSimulating] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   useEffect(() => {
-    const loadInvoices = async () => {
+    const fetchData = async () => {
       try {
-        const data = await firestoreService.getInvoices();
-        setInvoices(data);
+        const [invoiceData, folderData] = await Promise.all([
+          firestoreService.getInvoices(),
+          firestoreService.getDriveFolders()
+        ]);
+        setInvoices(invoiceData);
+        setDriveFolders(folderData);
       } catch (err) {
-        console.error("Failed to load invoices from Firestore:", err);
+        console.error("Failed to load data from Firestore:", err);
       }
     };
-    loadInvoices();
+    fetchData();
   }, []);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -149,6 +156,27 @@ const App: React.FC = () => {
     setSelectedInvoice(null);
   };
 
+  const handleAddFolder = async (name: string, folderId: string) => {
+    const newFolder: Omit<DriveFolder, 'id'> = {
+      name,
+      folderId,
+      enabled: true,
+      createdAt: new Date().toISOString()
+    };
+    const id = await firestoreService.saveDriveFolder(newFolder);
+    setDriveFolders(prev => [{ ...newFolder, id }, ...prev]);
+  };
+
+  const handleDeleteFolder = async (id: string) => {
+    await firestoreService.deleteDriveFolder(id);
+    setDriveFolders(prev => prev.filter(f => f.id !== id));
+  };
+
+  const handleToggleFolder = async (id: string, enabled: boolean) => {
+    await firestoreService.updateDriveFolderStatus(id, enabled);
+    setDriveFolders(prev => prev.map(f => f.id === id ? { ...f, enabled } : f));
+  };
+
   const filteredInvoices = useMemo(() => {
     return invoices.filter(inv =>
       inv.vendorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -180,6 +208,13 @@ const App: React.FC = () => {
             >
               <FileText size={20} />
               <span className="font-medium">Invoices</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${activeTab === 'settings' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+            >
+              <Settings size={20} />
+              <span className="font-medium">Settings</span>
             </button>
           </nav>
         </div>
@@ -221,7 +256,7 @@ const App: React.FC = () => {
         <div className="max-w-7xl mx-auto px-6 py-8">
           {activeTab === 'dashboard' ? (
             <Dashboard invoices={invoices} />
-          ) : (
+          ) : activeTab === 'list' ? (
             <div className="space-y-4">
               <div className="flex justify-between items-end mb-6">
                 <div>
@@ -283,6 +318,13 @@ const App: React.FC = () => {
                 </table>
               </div>
             </div>
+          ) : (
+            <FolderSettings
+              folders={driveFolders}
+              onAddFolder={handleAddFolder}
+              onDeleteFolder={handleDeleteFolder}
+              onToggleFolder={handleToggleFolder}
+            />
           )}
         </div>
       </main>
