@@ -1,0 +1,4 @@
+project_id   = "YOUR_GCP_PROJECT_ID"
+region       = "asia-northeast1"
+service_name = "gemini-invoice-pay"
+image_tag    = "latest"
