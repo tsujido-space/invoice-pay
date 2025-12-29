@@ -8,6 +8,12 @@ provider "google-beta" {
   region  = var.region
 }
 
+# Enable APIs
+resource "google_project_service" "firestore" {
+  service = "firestore.googleapis.com"
+  disable_on_destroy = false
+}
+
 # Artifact Registry Repository
 resource "google_artifact_registry_repository" "repo" {
   location      = var.region
@@ -61,4 +67,39 @@ resource "google_iap_web_cloud_run_service_iam_member" "member" {
   cloud_run_service_name = google_cloud_run_v2_service.default.name
   role    = "roles/iap.httpsResourceAccessor"
   member  = "domain:${var.allowed_domain}"
+}
+
+# Firestore Database
+resource "google_firestore_database" "database" {
+  provider                          = google-beta
+  name                              = "(default)"
+  location_id                       = var.region
+  type                              = "FIRESTORE_NATIVE"
+  deletion_policy                   = "DELETE"
+  depends_on                        = [google_project_service.firestore]
+}
+
+# Grant Firestore User role to the default compute service account
+resource "google_project_iam_member" "firestore_user" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+}
+
+# Firestore Security Rules (Allow all within the project context)
+# Since IAP is protecting the front-end, we can allow read/write from authenticated web clients.
+resource "google_firebaserules_ruleset" "firestore" {
+  project = var.project_id
+  source {
+    files {
+      name    = "firestore.rules"
+      content = "service cloud.firestore { match /databases/{database}/documents { match /{document=**} { allow read, write: if true; } } }"
+    }
+  }
+}
+
+resource "google_firebaserules_release" "firestore" {
+  name         = "cloud.firestore"
+  ruleset_name = google_firebaserules_ruleset.firestore.name
+  project      = var.project_id
 }

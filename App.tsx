@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  LayoutDashboard, 
-  FileText, 
-  Plus, 
-  Search, 
+import {
+  LayoutDashboard,
+  FileText,
+  Plus,
+  Search,
   Filter,
   CheckCircle2,
   Clock,
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Invoice, PaymentStatus, BankAccountInfo } from './types';
 import { extractInvoiceData } from './services/geminiService';
+import * as firestoreService from './services/firestoreService';
 import Dashboard from './components/Dashboard';
 
 const App: React.FC = () => {
@@ -30,43 +31,15 @@ const App: React.FC = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   useEffect(() => {
-    const mockInvoices: Invoice[] = [
-      {
-        id: '1',
-        vendorName: 'AWS Cloud Services',
-        invoiceNumber: 'INV-2023-991',
-        amount: 45000,
-        currency: 'JPY',
-        dueDate: '2024-06-15',
-        issueDate: '2024-05-15',
-        status: PaymentStatus.PENDING,
-        category: 'Software',
-        extractedAt: new Date().toISOString(),
-        fileName: 'aws_invoice_may.pdf',
-        bankAccount: {
-          bankName: '三菱UFJ銀行',
-          branchName: '丸の内支店',
-          accountType: '普通',
-          accountNumber: '1234567',
-          accountName: 'アマゾンウェブサービスジャパン（ド'
-        }
-      },
-      {
-        id: '2',
-        vendorName: 'Tokyo Office Leasing',
-        invoiceNumber: 'RENT-002',
-        amount: 250000,
-        currency: 'JPY',
-        dueDate: '2024-05-30',
-        issueDate: '2024-05-01',
-        status: PaymentStatus.PAID,
-        category: 'Rent',
-        extractedAt: new Date().toISOString(),
-        fileName: 'office_rent.pdf',
-        paymentDate: '2024-05-25'
+    const loadInvoices = async () => {
+      try {
+        const data = await firestoreService.getInvoices();
+        setInvoices(data);
+      } catch (err) {
+        console.error("Failed to load invoices from Firestore:", err);
       }
-    ];
-    setInvoices(mockInvoices);
+    };
+    loadInvoices();
   }, []);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,7 +72,9 @@ const App: React.FC = () => {
             fileName: file.name,
             bankAccount: result.bankAccount
           };
-          setInvoices(prev => [newInvoice, ...prev]);
+
+          const docId = await firestoreService.saveInvoice(newInvoice);
+          setInvoices(prev => [{ ...newInvoice, id: docId }, ...prev]);
         } catch (err) {
           alert('Failed to process invoice. Ensure it is a clear image or PDF.');
         } finally {
@@ -136,9 +111,12 @@ const App: React.FC = () => {
           accountName: 'グーグル・クラウド・ジャパン（ド'
         }
       };
-      setInvoices(prev => [newInvoice, ...prev]);
-      setIsDriveSimulating(false);
-      setActiveTab('list');
+
+      firestoreService.saveInvoice(newInvoice).then(docId => {
+        setInvoices(prev => [{ ...newInvoice, id: docId }, ...prev]);
+        setIsDriveSimulating(false);
+        setActiveTab('list');
+      });
     }, 2000);
   };
 
@@ -155,10 +133,15 @@ const App: React.FC = () => {
     setInvoices(prev => prev.map(inv => {
       if (inv.id === id) {
         const nextStatus = inv.status === PaymentStatus.PAID ? PaymentStatus.PENDING : PaymentStatus.PAID;
-        return { 
-          ...inv, 
+        const newPaymentDate = nextStatus === PaymentStatus.PAID ? (paymentDate || new Date().toISOString().split('T')[0]) : undefined;
+
+        // Update Firestore asynchronously
+        firestoreService.updateInvoiceStatus(id, nextStatus, newPaymentDate);
+
+        return {
+          ...inv,
           status: nextStatus,
-          paymentDate: nextStatus === PaymentStatus.PAID ? (paymentDate || new Date().toISOString().split('T')[0]) : undefined
+          paymentDate: newPaymentDate
         };
       }
       return inv;
@@ -167,7 +150,7 @@ const App: React.FC = () => {
   };
 
   const filteredInvoices = useMemo(() => {
-    return invoices.filter(inv => 
+    return invoices.filter(inv =>
       inv.vendorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -184,14 +167,14 @@ const App: React.FC = () => {
             <h1 className="text-xl font-bold tracking-tight">Gemini Pay</h1>
           </div>
           <nav className="space-y-2">
-            <button 
+            <button
               onClick={() => setActiveTab('dashboard')}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
             >
               <LayoutDashboard size={20} />
               <span className="font-medium">Dashboard</span>
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('list')}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${activeTab === 'list' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
             >
@@ -216,15 +199,15 @@ const App: React.FC = () => {
           <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
             <div className="relative w-full sm:w-96">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input 
-                type="text" 
-                placeholder="Search vendor, invoice ID..." 
+              <input
+                type="text"
+                placeholder="Search vendor, invoice ID..."
                 className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <button 
+            <button
               onClick={simulateDriveSync}
               disabled={isDriveSimulating}
               className="flex items-center space-x-2 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-medium text-slate-600"
@@ -274,7 +257,7 @@ const App: React.FC = () => {
                         <td className="px-6 py-5 text-sm text-slate-600">{inv.dueDate}</td>
                         <td className="px-6 py-5">
                           {inv.bankAccount ? (
-                            <button 
+                            <button
                               onClick={() => setSelectedInvoice(inv)}
                               className="flex items-center space-x-1.5 px-2 py-1 rounded bg-blue-50 text-blue-700 text-xs font-medium hover:bg-blue-100 transition"
                             >
@@ -317,7 +300,7 @@ const App: React.FC = () => {
                 <X size={20} className="text-slate-400" />
               </button>
             </div>
-            
+
             <div className="p-6 space-y-6">
               <div className="bg-blue-50 rounded-xl p-4 space-y-3">
                 <BankDetailRow label="銀行名" value={selectedInvoice.bankAccount?.bankName} />
@@ -335,13 +318,13 @@ const App: React.FC = () => {
               </div>
 
               <div className="flex gap-3">
-                <button 
+                <button
                   onClick={() => setSelectedInvoice(null)}
                   className="flex-1 py-3 px-4 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 transition"
                 >
                   キャンセル
                 </button>
-                <button 
+                <button
                   onClick={() => updateStatus(selectedInvoice.id)}
                   className="flex-1 py-3 px-4 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition flex items-center justify-center space-x-2 shadow-lg shadow-blue-200"
                 >
@@ -375,7 +358,7 @@ const BankDetailRow: React.FC<{ label: string; value?: string; isBold?: boolean 
           {value || '---'}
         </span>
         {value && (
-          <button 
+          <button
             onClick={handleCopy}
             className="ml-2 p-1.5 rounded-lg hover:bg-blue-100 text-blue-500 transition"
             title="コピー"
