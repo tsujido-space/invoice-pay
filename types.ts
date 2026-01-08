@@ -30,6 +30,7 @@ export interface Invoice {
   bankAccount?: BankAccountInfo;
   paymentDate?: string;
   driveFileId?: string;
+  webViewLink?: string;
 }
 
 export interface InvoiceExtractionResult {

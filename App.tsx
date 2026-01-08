@@ -380,6 +380,23 @@ const App: React.FC = () => {
                 </span>
               </div>
 
+              {selectedInvoice.webViewLink && (
+                <div className="mb-8 p-4 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-between group">
+                  <div className="flex items-center space-x-3 text-blue-700 font-bold">
+                    <CloudDownload size={20} />
+                    <span>元のファイルをプレビュー</span>
+                  </div>
+                  <a
+                    href={selectedInvoice.webViewLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition shadow-md shadow-blue-200"
+                  >
+                    <Search size={18} />
+                  </a>
+                </div>
+              )}
+
               <div className="flex gap-3">
                 <button
                   onClick={() => setSelectedInvoice(null)}

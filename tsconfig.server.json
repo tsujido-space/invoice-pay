@@ -1,0 +1,23 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "lib": [
+            "ESNext"
+        ],
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "forceConsistentCasingInFileNames": true,
+        "strict": true,
+        "outDir": "dist-server",
+        "isolatedModules": true
+    },
+    "include": [
+        "server.ts",
+        "firebase.ts",
+        "services/firestoreService.ts",
+        "types.ts"
+    ]
+}

@@ -8,7 +8,10 @@ COPY package*.json ./
 RUN npm install
 
 COPY . .
+# Build frontend
 RUN npm run build
+# Build backend using dedicated config
+RUN npm run build:server
 
 # Production stage
 FROM node:18-alpine
@@ -16,22 +19,14 @@ FROM node:18-alpine
 WORKDIR /app
 
 COPY package*.json ./
-# Install only production dependencies
 RUN npm install --production
 
-# Copy build artifacts and server file
+# Copy build artifacts
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/server.ts ./server.ts
-COPY --from=build /app/services ./services
-COPY --from=build /app/firebase.ts ./firebase.ts
-COPY --from=build /app/types.ts ./types.ts
-
-# Install ts-node to run the server file directly in production (simplest for now)
-RUN npm install -g ts-node typescript
+COPY --from=build /app/dist-server ./dist-server
 
 EXPOSE 8080
-
 ENV PORT=8080
 
-# In Cloud Run, the service account credentials are automatically provided
-CMD ["ts-node", "--esm", "--skipProject", "server.ts"]
+# Run the compiled javascript
+CMD ["node", "dist-server/server.js"]
