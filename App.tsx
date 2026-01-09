@@ -14,7 +14,12 @@ import {
   Copy,
   Check,
   Settings,
-  Trash2
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+  Eye,
+  Calendar,
+  Layers
 } from 'lucide-react';
 import { Invoice, PaymentStatus, BankAccountInfo, DriveFolder } from './types';
 import { extractInvoiceData } from './services/geminiService';
@@ -30,6 +35,16 @@ const App: React.FC = () => {
   const [isDriveSimulating, setIsDriveSimulating] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [syncProgress, setSyncProgress] = useState<{ current: number, total: number } | null>(null);
+
+  // Filtering & Sorting states
+  const [filterVendor, setFilterVendor] = useState<string>('all');
+  const [filterYear, setFilterYear] = useState<string>('all');
+  const [filterMonth, setFilterMonth] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [sortConfig, setSortConfig] = useState<{ key: keyof Invoice | 'amount'; direction: 'asc' | 'desc' }>({
+    key: 'dueDate',
+    direction: 'desc'
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -113,7 +128,9 @@ const App: React.FC = () => {
         const invoiceData = await firestoreService.getInvoices();
         setInvoices(invoiceData);
 
-        if (data.processedCount > 0) {
+        if (data.message && (data.message.toLowerCase().includes("started") || data.message.toLowerCase().includes("job"))) {
+          alert("Google Drive との同期プロセスを開始しました。新しい請求書が表示されるまで数分かかる場合があります。");
+        } else if (data.processedCount > 0) {
           alert(`${data.processedCount} 件の新しい請求書を取り込みました。`);
         } else {
           alert("新しい請求書は見つかりませんでした。");
@@ -205,14 +222,64 @@ const App: React.FC = () => {
     }
   };
 
+  // Derive unique values for filters
+  const filterOptions = useMemo(() => {
+    const vendors = Array.from(new Set(invoices.map(inv => inv.vendorName))).sort();
+    const years = Array.from(new Set(invoices.map(inv => {
+      const date = inv.issueDate || inv.dueDate;
+      return date ? date.split('-')[0] : null;
+    }))).filter(Boolean).sort((a, b) => b!.localeCompare(a!));
+    const months = Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0'));
+
+    return { vendors, years, months };
+  }, [invoices]);
+
   const filteredInvoices = useMemo(() => {
-    return invoices.filter(inv =>
-      inv.status !== 'DELETED' && (
+    let result = invoices.filter(inv => {
+      if (inv.status === 'DELETED') return false;
+
+      const matchesSearch =
         inv.vendorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    );
-  }, [invoices, searchTerm]);
+        inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesVendor = filterVendor === 'all' || inv.vendorName === filterVendor;
+      const matchesStatus = filterStatus === 'all' || inv.status === filterStatus;
+
+      const date = inv.issueDate || inv.dueDate;
+      const year = date ? date.split('-')[0] : null;
+      const month = date ? date.split('-')[1] : null;
+
+      const matchesYear = filterYear === 'all' || year === filterYear;
+      const matchesMonth = filterMonth === 'all' || month === filterMonth;
+
+      return matchesSearch && matchesVendor && matchesStatus && matchesYear && matchesMonth;
+    });
+
+    // Sort
+    result.sort((a, b) => {
+      const { key, direction } = sortConfig;
+      let valA: any = a[key as keyof Invoice];
+      let valB: any = b[key as keyof Invoice];
+
+      if (key === 'amount') {
+        valA = a.amount;
+        valB = b.amount;
+      }
+
+      if (valA < valB) return direction === 'asc' ? -1 : 1;
+      if (valA > valB) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [invoices, searchTerm, filterVendor, filterYear, filterMonth, filterStatus, sortConfig]);
+
+  const handleSort = (key: keyof Invoice | 'amount') => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
+    }));
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
@@ -254,34 +321,95 @@ const App: React.FC = () => {
 
       <main className="flex-1 overflow-y-auto">
         <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div className="relative w-full sm:w-96">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
-                type="text"
-                placeholder="Search vendor, invoice ID..."
-                className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          <div className="max-w-7xl mx-auto px-6 py-4 space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div className="relative w-full sm:w-96">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input
+                  type="text"
+                  placeholder="Search vendor, invoice ID..."
+                  className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <button
+                onClick={syncDrive}
+                disabled={isDriveSimulating}
+                className="flex items-center space-x-2 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-medium text-slate-600 disabled:opacity-50"
+              >
+                {isDriveSimulating ? (
+                  <>
+                    <Clock className="animate-spin text-blue-600" size={18} />
+                    <span>{syncProgress ? `Syncing (${syncProgress.current}/${syncProgress.total})` : 'Syncing...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <CloudDownload size={18} className="text-blue-600" />
+                    <span>Sync Drive</span>
+                  </>
+                )}
+              </button>
             </div>
-            <button
-              onClick={syncDrive}
-              disabled={isDriveSimulating}
-              className="flex items-center space-x-2 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-medium text-slate-600 disabled:opacity-50"
-            >
-              {isDriveSimulating ? (
-                <>
-                  <Clock className="animate-spin text-blue-600" size={18} />
-                  <span>{syncProgress ? `Syncing (${syncProgress.current}/${syncProgress.total})` : 'Syncing...'}</span>
-                </>
-              ) : (
-                <>
-                  <CloudDownload size={18} className="text-blue-600" />
-                  <span>Sync Drive</span>
-                </>
+
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <div className="flex items-center space-x-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+                <Filter size={14} className="text-slate-400" />
+                <span className="text-slate-500 font-medium">Filter:</span>
+              </div>
+
+              <select
+                className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={filterVendor}
+                onChange={(e) => setFilterVendor(e.target.value)}
+              >
+                <option value="all">すべての取引先</option>
+                {filterOptions.vendors.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+
+              <select
+                className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={filterYear}
+                onChange={(e) => setFilterYear(e.target.value)}
+              >
+                <option value="all">年</option>
+                {filterOptions.years.map(y => <option key={y} value={y}>{y}年</option>)}
+              </select>
+
+              <select
+                className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={filterMonth}
+                onChange={(e) => setFilterMonth(e.target.value)}
+              >
+                <option value="all">月</option>
+                {filterOptions.months.map(m => <option key={m} value={m}>{parseInt(m)}月</option>)}
+              </select>
+
+              <select
+                className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="all">すべてのステータス</option>
+                <option value={PaymentStatus.PENDING}>未振込</option>
+                <option value={PaymentStatus.PAID}>振込済</option>
+              </select>
+
+              {(filterVendor !== 'all' || filterYear !== 'all' || filterMonth !== 'all' || filterStatus !== 'all') && (
+                <button
+                  onClick={() => {
+                    setFilterVendor('all');
+                    setFilterYear('all');
+                    setFilterMonth('all');
+                    setFilterStatus('all');
+                  }}
+                  className="text-blue-600 hover:text-blue-700 font-medium ml-2 flex items-center space-x-1"
+                >
+                  <X size={14} />
+                  <span>クリア</span>
+                </button>
               )}
-            </button>
+            </div>
           </div>
         </header>
 
@@ -299,17 +427,51 @@ const App: React.FC = () => {
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Vendor / Invoice</th>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Amount</th>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Due Date</th>
+                      <th
+                        className="px-6 py-4 text-xs font-bold text-slate-500 uppercase cursor-pointer hover:bg-slate-100 transition"
+                        onClick={() => handleSort('vendorName')}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Vendor / Invoice</span>
+                          {sortConfig.key === 'vendorName' && (
+                            sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="px-6 py-4 text-xs font-bold text-slate-500 uppercase cursor-pointer hover:bg-slate-100 transition"
+                        onClick={() => handleSort('amount')}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Amount</span>
+                          {sortConfig.key === 'amount' && (
+                            sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="px-6 py-4 text-xs font-bold text-slate-500 uppercase cursor-pointer hover:bg-slate-100 transition"
+                        onClick={() => handleSort('dueDate')}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Due Date</span>
+                          {sortConfig.key === 'dueDate' && (
+                            sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                          )}
+                        </div>
+                      </th>
                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Bank Account</th>
                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Status</th>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase"></th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredInvoices.map((inv) => (
-                      <tr key={inv.id} className="hover:bg-slate-50 transition group">
+                      <tr
+                        key={inv.id}
+                        className="hover:bg-blue-50/30 transition group cursor-pointer"
+                        onClick={() => setSelectedInvoice(inv)}
+                      >
                         <td className="px-6 py-5">
                           <p className="font-bold text-slate-900">{inv.vendorName}</p>
                           <p className="text-sm text-slate-500">{inv.invoiceNumber}</p>
@@ -322,30 +484,42 @@ const App: React.FC = () => {
                         <td className="px-6 py-5 text-sm text-slate-600">{inv.dueDate}</td>
                         <td className="px-6 py-5">
                           {inv.bankAccount ? (
-                            <button
-                              onClick={() => setSelectedInvoice(inv)}
-                              className="flex items-center space-x-1.5 px-2 py-1 rounded bg-blue-50 text-blue-700 text-xs font-medium hover:bg-blue-100 transition"
-                            >
+                            <div className="flex items-center space-x-1.5 px-2 py-1 rounded bg-blue-50 text-blue-700 text-xs font-medium w-fit">
                               <Building2 size={12} />
                               <span>{inv.bankAccount.bankName}</span>
-                            </button>
+                            </div>
                           ) : (
                             <span className="text-xs text-slate-400 italic">No bank info</span>
                           )}
                         </td>
                         <td className="px-6 py-5">
-                          <StatusBadge status={inv.status} onClick={() => toggleStatus(inv.id)} />
+                          <StatusBadge status={inv.status} onClick={(e: any) => { e.stopPropagation(); toggleStatus(inv.id); }} />
                           {inv.paymentDate && (
                             <p className="text-[10px] text-emerald-600 font-medium mt-1">Paid on: {inv.paymentDate}</p>
                           )}
                         </td>
                         <td className="px-6 py-5 text-right">
-                          <button
-                            onClick={(e) => handleDeleteInvoice(inv.id, e)}
-                            className="p-2 text-slate-400 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-colors"
-                          >
-                            <Trash2 size={18} />
-                          </button>
+                          <div className="flex items-center justify-end space-x-1">
+                            {inv.webViewLink && (
+                              <a
+                                href={inv.webViewLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                                title="プレビュー"
+                              >
+                                <Eye size={18} />
+                              </a>
+                            )}
+                            <button
+                              onClick={(e) => handleDeleteInvoice(inv.id, e)}
+                              className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition"
+                              title="削除"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
