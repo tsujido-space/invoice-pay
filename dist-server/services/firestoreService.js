@@ -24,6 +24,10 @@ export const updateInvoiceStatus = async (id, status, paymentDate) => {
         paymentDate: paymentDate || null
     });
 };
+export const deleteInvoice = async (id) => {
+    const invoiceRef = doc(db, COLLECTION_NAME, id);
+    await deleteDoc(invoiceRef);
+};
 export const isDriveFileProcessed = async (driveFileId) => {
     const q = query(collection(db, COLLECTION_NAME), where('driveFileId', '==', driveFileId));
     const querySnapshot = await getDocs(q);

@@ -1,11 +1,11 @@
-
-import express from 'express';
+import express, { Request, Response } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
 import { google } from 'googleapis';
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import * as firestoreService from './services/firestoreService.js';
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,7 +71,7 @@ const extractInvoiceWithGeminiServer = async (base64Data: string, mimeType: stri
     return JSON.parse(text);
 };
 
-app.post('/api/sync', async (req, res) => {
+app.post('/api/sync', async (req: Request, res: Response) => {
     try {
         const folders = await firestoreService.getDriveFolders();
         const enabledFolders = folders.filter(f => f.enabled);
@@ -80,19 +80,28 @@ app.post('/api/sync', async (req, res) => {
         let processedCount = 0;
 
         for (const folder of enabledFolders) {
-            console.log(`Scanning: ${folder.name}`);
+            console.log(`[Sync] Scanning folder: ${folder.name} (ID: ${folder.folderId})`);
+
+            const q = `'${folder.folderId}' in parents and (mimeType contains 'image/' or mimeType = 'application/pdf') and trashed = false`;
             const response = await drive.files.list({
-                q: `'${folder.folderId}' in parents and (mimeType contains 'image/' or mimeType = 'application/pdf') and trashed = false`,
+                q,
                 fields: 'files(id, name, mimeType, webViewLink)',
             });
 
             const files = response.data.files || [];
+            console.log(`[Sync] Found ${files.length} potential files in folder ${folder.name}`);
 
             for (const file of files) {
                 if (!file.id) continue;
-                if (await firestoreService.isDriveFileProcessed(file.id)) continue;
 
-                console.log(`Downloading: ${file.name}`);
+                const alreadyProcessed = await firestoreService.isDriveFileProcessed(file.id);
+                if (alreadyProcessed) {
+                    console.log(`[Sync] Skipping already processed file: ${file.name} (${file.id})`);
+                    continue;
+                }
+
+
+                console.log(`[Sync] Processing NEW file: ${file.name} (${file.id})`);
                 const fileContent = await drive.files.get({
                     fileId: file.id,
                     alt: 'media',
@@ -124,14 +133,26 @@ app.post('/api/sync', async (req, res) => {
 
         res.json({ success: true, processedCount });
     } catch (error: any) {
-        console.error("Sync error:", error);
+        console.error("[Sync] Error:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.delete('/api/invoices/:id', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        console.log(`[API] Logical deleting invoice: ${id}`);
+        await firestoreService.deleteInvoice(id);
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error("[API] Delete error:", error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
 app.use(express.static(path.join(__dirname, '..', 'dist')));
 
-app.use((req, res) => {
+app.use((req: Request, res: Response) => {
     res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
 });
 

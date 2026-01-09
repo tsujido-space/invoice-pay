@@ -1,7 +1,5 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  LayoutDashboard,
   FileText,
   Plus,
   Search,
@@ -9,26 +7,24 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  MoreVertical,
   X,
   FileCheck,
   CloudDownload,
   Building2,
   Copy,
   Check,
-  Settings
+  Settings,
+  Trash2
 } from 'lucide-react';
 import { Invoice, PaymentStatus, BankAccountInfo, DriveFolder } from './types';
 import { extractInvoiceData } from './services/geminiService';
 import * as firestoreService from './services/firestoreService';
-import * as driveService from './services/driveService';
-import Dashboard from './components/Dashboard';
 import FolderSettings from './components/FolderSettings';
 
 const App: React.FC = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [driveFolders, setDriveFolders] = useState<DriveFolder[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'list' | 'settings'>('list');
   const [isUploading, setIsUploading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDriveSimulating, setIsDriveSimulating] = useState(false);
@@ -66,8 +62,7 @@ const App: React.FC = () => {
 
         try {
           const result = await extractInvoiceData(base64Data, mimeType);
-          const newInvoice: Invoice = {
-            id: Math.random().toString(36).substr(2, 9),
+          const invoiceToSave: Omit<Invoice, 'id'> = {
             vendorName: result.vendorName,
             invoiceNumber: result.invoiceNumber,
             amount: result.totalAmount,
@@ -82,8 +77,9 @@ const App: React.FC = () => {
             bankAccount: result.bankAccount
           };
 
-          const docId = await firestoreService.saveInvoice(newInvoice);
-          setInvoices(prev => [{ ...newInvoice, id: docId }, ...prev]);
+          const docId = await firestoreService.saveInvoice(invoiceToSave);
+          const newInvoice: Invoice = { ...invoiceToSave, id: docId } as Invoice;
+          setInvoices(prev => [newInvoice, ...prev]);
         } catch (err) {
           alert('Failed to process invoice. Ensure it is a clear image or PDF.');
         } finally {
@@ -189,10 +185,32 @@ const App: React.FC = () => {
     setDriveFolders(prev => prev.map(f => f.id === id ? { ...f, enabled } : f));
   };
 
+  const handleDeleteInvoice = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm("この請求書を削除してもよろしいですか？")) return;
+
+    try {
+      const response = await fetch(`/api/invoices/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete on server');
+      }
+
+      setInvoices(prev => prev.filter(inv => inv.id !== id));
+    } catch (err) {
+      console.error("Delete invoice failed:", err);
+      alert("請求書の削除に失敗しました。サーバー側の権限や接続を確認してください。");
+    }
+  };
+
   const filteredInvoices = useMemo(() => {
     return invoices.filter(inv =>
-      inv.vendorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())
+      inv.status !== 'DELETED' && (
+        inv.vendorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())
+      )
     );
   }, [invoices, searchTerm]);
 
@@ -207,13 +225,6 @@ const App: React.FC = () => {
             <h1 className="text-xl font-bold tracking-tight">Gemini Pay</h1>
           </div>
           <nav className="space-y-2">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
-            >
-              <LayoutDashboard size={20} />
-              <span className="font-medium">Dashboard</span>
-            </button>
             <button
               onClick={() => setActiveTab('list')}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${activeTab === 'list' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
@@ -275,9 +286,7 @@ const App: React.FC = () => {
         </header>
 
         <div className="max-w-7xl mx-auto px-6 py-8">
-          {activeTab === 'dashboard' ? (
-            <Dashboard invoices={invoices} />
-          ) : activeTab === 'list' ? (
+          {activeTab === 'list' ? (
             <div className="space-y-4">
               <div className="flex justify-between items-end mb-6">
                 <div>
@@ -331,7 +340,12 @@ const App: React.FC = () => {
                           )}
                         </td>
                         <td className="px-6 py-5 text-right">
-                          <button className="p-2 text-slate-400 opacity-0 group-hover:opacity-100"><MoreVertical size={18} /></button>
+                          <button
+                            onClick={(e) => handleDeleteInvoice(inv.id, e)}
+                            className="p-2 text-slate-400 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-colors"
+                          >
+                            <Trash2 size={18} />
+                          </button>
                         </td>
                       </tr>
                     ))}

@@ -2,6 +2,9 @@
 
 このファイルは、AI（Antigravity/Gemini）がこのプロジェクトを扱う際に参照すべき、環境固有の注意事項や判断基準を記録します。
 
+## 全般ルール
+- implementation plan, walkthrough, tasks listは必ず更新、日本語で書いてください。
+
 ## デプロイメント
 
 ### クラウド環境
