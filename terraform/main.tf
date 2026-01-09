@@ -40,7 +40,19 @@ resource "google_cloud_run_v2_service" "default" {
     containers {
       image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/${var.service_name}:${var.image_tag}"
       ports {
-        container_port = 80
+        container_port = 8080
+      }
+      env {
+        name  = "PROJECT_ID"
+        value = var.project_id
+      }
+      env {
+        name  = "PORT"
+        value = "8080"
+      }
+      env {
+        name  = "GEMINI_API_KEY"
+        value = var.gemini_api_key
       }
     }
   }
@@ -89,6 +101,33 @@ resource "google_project_iam_member" "firestore_user" {
   project = var.project_id
   role    = "roles/datastore.user"
   member  = "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+}
+
+# Cloud Run Job for Sync
+resource "google_cloud_run_v2_job" "sync_job" {
+  provider = google-beta
+  name     = "${var.service_name}-sync"
+  location = var.region
+  deletion_protection = false
+
+  template {
+    template {
+      containers {
+        image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.repo.repository_id}/${var.service_name}:${var.image_tag}"
+        args  = ["--sync-job"]
+        env {
+          name  = "PROJECT_ID"
+          value = var.project_id
+        }
+        env {
+          name  = "GEMINI_API_KEY"
+          value = var.gemini_api_key
+        }
+      }
+      max_retries = 1
+      timeout     = "600s"
+    }
+  }
 }
 
 # Firestore Security Rules (Allow all within the project context)

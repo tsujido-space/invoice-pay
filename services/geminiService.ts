@@ -9,7 +9,7 @@ export const extractInvoiceData = async (
   mimeType: string
 ): Promise<InvoiceExtractionResult> => {
   const genAI = new GoogleGenerativeAI(API_KEY!);
-  const model = genAI.getGenerativeModel({ model: "gemini-3.0-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
   const response = await model.generateContent({
     contents: [

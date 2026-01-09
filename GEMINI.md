@@ -5,6 +5,25 @@
 ## 全般ルール
 - implementation plan, walkthrough, tasks listは必ず更新、日本語で書いてください。
 
+## 同期処理 (Google Drive Sync)
+
+### 仕組み
+- 大量のファイルを効率的に処理するため、同期処理は **Cloud Run Jobs** として実行します。
+- これにより、HTTP リクエストのタイムアウト（通常 60-300秒）に縛られず、最長 24時間の処理が可能です。
+
+### 実行方法
+- **手動実行 (gcloud)**:
+  ```bash
+  gcloud run jobs execute gemini-invoice-sync --region [REGION]
+  ```
+- **アプリケーションからの実行**:
+  `server.ts` の `/api/sync` エンドポイントを叩くことで、バックグラウンドで処理が開始されるよう構成しています。
+
+### 設定と AI モデル
+- **使用モデル**: `gemini-3-flash-preview` (Gemini 3 シリーズの最新 Flash モデル)
+- **並列処理**: 3 ファイルずつのバッチ並列処理を行い、抽出速度を向上させています。
+- **環境変数**: `GEMINI_API_KEY` を Cloud Run Jobs の設定に含める必要があります。
+
 ## デプロイメント
 
 ### クラウド環境

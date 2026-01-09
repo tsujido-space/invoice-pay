@@ -26,3 +26,9 @@ variable "allowed_domain" {
   type        = string
   default     = "tsujido.co.jp"
 }
+
+variable "gemini_api_key" {
+  description = "API Key for Gemini"
+  type        = string
+  sensitive   = true
+}

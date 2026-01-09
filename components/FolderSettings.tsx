@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Folder, Plus, Trash2, ExternalLink, AlertCircle, Clock } from 'lucide-react';
+import { Folder, Plus, Trash2, ExternalLink, AlertCircle, Clock, Copy, Check, Info } from 'lucide-react';
 import { DriveFolder } from '../types';
 
 interface FolderSettingsProps {
@@ -19,7 +19,16 @@ const FolderSettings: React.FC<FolderSettingsProps> = ({
     const [newName, setNewName] = useState('');
     const [newFolderId, setNewFolderId] = useState('');
     const [isAdding, setIsAdding] = useState(false);
-    const [isSaving, setIsSaving] = useState(false); // New state for loading
+    const [isSaving, setIsSaving] = useState(false);
+    const [copied, setCopied] = useState(false);
+
+    const serviceAccount = "732967026525-compute@developer.gserviceaccount.com";
+
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(serviceAccount);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
 
     const handleSubmit = async (e: React.FormEvent) => { // Made async
         e.preventDefault();
@@ -51,6 +60,36 @@ const FolderSettings: React.FC<FolderSettingsProps> = ({
                     <Plus size={18} />
                     <span>フォルダを追加</span>
                 </button>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 mb-8">
+                <div className="flex items-start space-x-4">
+                    <div className="bg-blue-600 p-2.5 rounded-xl text-white shadow-lg shadow-blue-200">
+                        <Info size={24} />
+                    </div>
+                    <div className="flex-1">
+                        <h3 className="text-lg font-bold text-slate-900 mb-1">同期を有効にするための重要設定</h3>
+                        <p className="text-slate-600 mb-4 leading-relaxed">
+                            Google Drive の対象フォルダを以下のシステム用メールアドレスに直接「共有（閲覧権限）」設定していただく必要があります。
+                        </p>
+                        <div className="flex items-center space-x-2">
+                            <div className="flex-1 bg-white border border-blue-200 rounded-lg px-4 py-2.5 font-mono text-sm text-blue-700 break-all">
+                                {serviceAccount}
+                            </div>
+                            <button
+                                onClick={copyToClipboard}
+                                className="flex-shrink-0 p-2.5 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition text-blue-600 shadow-sm"
+                                title="コピー"
+                            >
+                                {copied ? <Check size={20} className="text-emerald-500" /> : <Copy size={20} />}
+                            </button>
+                        </div>
+                        <p className="mt-4 text-xs text-slate-500 flex items-center">
+                            <AlertCircle size={14} className="mr-1" />
+                            権限設定なしでは、このフォルダ内のファイルは一切読み取れません。
+                        </p>
+                    </div>
+                </div>
             </div>
 
             {isAdding && (

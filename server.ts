@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import cors from 'cors';
 import { google } from 'googleapis';
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { JobsClient } from '@google-cloud/run';
 import * as firestoreService from './services/firestoreService.js';
 
 
@@ -29,7 +30,7 @@ const extractInvoiceWithGeminiServer = async (base64Data: string, mimeType: stri
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not set");
 
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-3.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
     const response = await model.generateContent({
         contents: [{
@@ -71,70 +72,117 @@ const extractInvoiceWithGeminiServer = async (base64Data: string, mimeType: stri
     return JSON.parse(text);
 };
 
-app.post('/api/sync', async (req: Request, res: Response) => {
+const runSync = async () => {
+    let processedCount = 0;
     try {
         const folders = await firestoreService.getDriveFolders();
         const enabledFolders = folders.filter(f => f.enabled);
         const drive = await getDriveClient();
 
-        let processedCount = 0;
+        console.log(`[Sync] Starting sync for ${enabledFolders.length} folders`);
 
         for (const folder of enabledFolders) {
             console.log(`[Sync] Scanning folder: ${folder.name} (ID: ${folder.folderId})`);
 
-            const q = `'${folder.folderId}' in parents and (mimeType contains 'image/' or mimeType = 'application/pdf') and trashed = false`;
-            const response = await drive.files.list({
-                q,
-                fields: 'files(id, name, mimeType, webViewLink)',
-            });
+            try {
+                const q = `'${folder.folderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`;
+                const response = await drive.files.list({
+                    q,
+                    fields: 'files(id, name, mimeType, webViewLink)',
+                    supportsAllDrives: true,
+                    includeItemsFromAllDrives: true,
+                });
 
-            const files = response.data.files || [];
-            console.log(`[Sync] Found ${files.length} potential files in folder ${folder.name}`);
+                const files = response.data.files || [];
+                console.log(`[Sync] API found ${files.length} items in folder ${folder.name}`);
 
-            for (const file of files) {
-                if (!file.id) continue;
+                // バッチ並列処理（3ファイルずつ）
+                const batchSize = 3;
+                for (let i = 0; i < files.length; i += batchSize) {
+                    const batch = files.slice(i, i + batchSize);
+                    await Promise.all(batch.map(async (file) => {
+                        if (!file.id) return;
 
-                const alreadyProcessed = await firestoreService.isDriveFileProcessed(file.id);
-                if (alreadyProcessed) {
-                    console.log(`[Sync] Skipping already processed file: ${file.name} (${file.id})`);
-                    continue;
+                        const isCandidate = file.mimeType?.includes('image/') ||
+                            file.mimeType === 'application/pdf' ||
+                            file.name?.toLowerCase().endsWith('.pdf') ||
+                            file.name?.toLowerCase().endsWith('.jpg') ||
+                            file.name?.toLowerCase().endsWith('.jpeg') ||
+                            file.name?.toLowerCase().endsWith('.png');
+
+                        if (!isCandidate) return;
+
+                        const alreadyProcessed = await firestoreService.isDriveFileProcessed(file.id);
+                        if (alreadyProcessed) return;
+
+                        console.log(`[Sync] Processing NEW file: ${file.name} (${file.id})`);
+                        try {
+                            const fileContent = await drive.files.get({
+                                fileId: file.id,
+                                alt: 'media',
+                                supportsAllDrives: true,
+                            }, { responseType: 'arraybuffer' });
+
+                            const base64Data = Buffer.from(fileContent.data as ArrayBuffer).toString('base64');
+                            const result = await extractInvoiceWithGeminiServer(base64Data, file.mimeType || 'application/pdf');
+
+                            const newInvoice = {
+                                vendorName: result.vendorName,
+                                invoiceNumber: result.invoiceNumber || '',
+                                amount: result.totalAmount,
+                                currency: result.currency || 'JPY',
+                                dueDate: result.dueDate,
+                                issueDate: result.issueDate || new Date().toISOString().split('T')[0],
+                                status: 'PENDING',
+                                category: result.category || 'Other',
+                                extractedAt: new Date().toISOString(),
+                                fileName: file.name || 'unknown',
+                                bankAccount: result.bankAccount,
+                                driveFileId: file.id,
+                                webViewLink: file.webViewLink || undefined
+                            };
+
+                            await firestoreService.saveInvoice(newInvoice as any);
+                            processedCount++;
+                        } catch (err: any) {
+                            console.error(`[Sync] Failed processing ${file.name}:`, err.message);
+                        }
+                    }));
                 }
-
-
-                console.log(`[Sync] Processing NEW file: ${file.name} (${file.id})`);
-                const fileContent = await drive.files.get({
-                    fileId: file.id,
-                    alt: 'media',
-                }, { responseType: 'arraybuffer' });
-
-                const base64Data = Buffer.from(fileContent.data as ArrayBuffer).toString('base64');
-                const result = await extractInvoiceWithGeminiServer(base64Data, file.mimeType || 'application/pdf');
-
-                const newInvoice = {
-                    vendorName: result.vendorName,
-                    invoiceNumber: result.invoiceNumber || '',
-                    amount: result.totalAmount,
-                    currency: result.currency || 'JPY',
-                    dueDate: result.dueDate,
-                    issueDate: result.issueDate || new Date().toISOString().split('T')[0],
-                    status: 'PENDING',
-                    category: result.category || 'Other',
-                    extractedAt: new Date().toISOString(),
-                    fileName: file.name || 'unknown',
-                    bankAccount: result.bankAccount,
-                    driveFileId: file.id,
-                    webViewLink: file.webViewLink || undefined
-                };
-
-                await firestoreService.saveInvoice(newInvoice as any);
-                processedCount++;
+            } catch (folderError: any) {
+                console.error(`[Sync] Error accessing folder ${folder.name}:`, folderError.message);
             }
         }
+        return processedCount;
+    } catch (error) {
+        throw error;
+    }
+};
 
-        res.json({ success: true, processedCount });
+app.post('/api/sync', async (req: Request, res: Response) => {
+    console.log('[API] Sync requested - Triggering Cloud Run Job');
+    try {
+        const client = new JobsClient();
+        const projectId = process.env.PROJECT_ID || 'tsujido2024';
+        const region = 'us-central1'; // 固定または環境変数
+        const jobName = `gemini-invoice-pay-sync`;
+
+        const name = `projects/${projectId}/locations/${region}/jobs/${jobName}`;
+
+        console.log(`[Job] Running job: ${name}`);
+        const [operation] = await client.runJob({ name });
+
+        res.status(202).json({
+            success: true,
+            message: 'Sync job started',
+            operationName: operation.name
+        });
     } catch (error: any) {
-        console.error("[Sync] Error:", error);
-        res.status(500).json({ success: false, error: error.message });
+        console.error("[Sync] Job trigger error:", error.message);
+        // フォールバック: バックグラウンドでの同期（Jobs API が使えない場合など）
+        console.log('[Sync] Falling back to background process sync');
+        runSync().catch(err => console.error('[Sync] Background sync failed:', err));
+        res.status(202).json({ success: true, message: 'Sync started in background (fallback)' });
     }
 });
 
@@ -156,6 +204,20 @@ app.use((req: Request, res: Response) => {
     res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
 });
 
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-});
+// CLI Job サポート
+if (process.argv.includes('--sync-job')) {
+    console.log('[Job] Starting sync job...');
+    runSync()
+        .then(count => {
+            console.log(`[Job] Sync completed. Processed ${count} items.`);
+            process.exit(0);
+        })
+        .catch(err => {
+            console.error('[Job] Sync failed:', err);
+            process.exit(1);
+        });
+} else {
+    app.listen(port, () => {
+        console.log(`Server running on port ${port}`);
+    });
+}
